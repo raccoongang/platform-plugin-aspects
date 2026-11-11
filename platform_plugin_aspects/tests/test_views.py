@@ -364,6 +364,40 @@ class ViewPermissionsTestCase(TestCase):
 
         self._assert_denied(self.client.get(url))
 
+    def _set_staff_on_course(self, staff_course_id):
+        """
+        Mock a course role on staff_course_id only, checked against the
+        course the view passes to the permission, as edx-platform does.
+        """
+        self._patch(
+            "platform_plugin_aspects.views.IsCourseStaffInstructor.has_object_permission",
+            autospec=True,
+            side_effect=lambda _perm, _request, _view, obj: str(obj.course_id)
+            == staff_course_id,
+        )
+
+    @ddt.data(*PERMISSION_TEST_URLS)
+    def test_staff_of_another_course_denied(self, url):
+        """
+        Staff of one course get nothing for another course.
+        """
+        self._login()
+        self._set_staff_on_course("course-v1:org+other+run")
+
+        self._assert_denied(self.client.get(url))
+
+    @ddt.data(*PERMISSION_TEST_URLS)
+    def test_staff_of_the_requested_course_allowed(self, url):
+        """
+        The role is checked on the requested course itself.
+        """
+        self._login()
+        self._set_staff_on_course(COURSE_ID)
+
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+
     @ddt.data(
         SupersetTokenView,
         SupersetInContextDashboardView,

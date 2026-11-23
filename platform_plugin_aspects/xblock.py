@@ -38,6 +38,10 @@ loader = ResourceLoader(__name__)
 # Global staff are reported as "instructor".
 COURSE_STAFF_ROLES = ("staff", "instructor")
 
+# Harrow (HARROW_6-5356, ADR-0015): no stock Superset dashboard is served through the LMS, so the block
+# gives nobody a guest token. Harrow's own dashboards are embedded by analytics-reports.
+STOCK_GUEST_TOKENS = False
+
 
 @XBlock.needs("user")
 @XBlock.needs("i18n")
@@ -218,6 +222,11 @@ class SupersetXBlock(StudioEditableXBlockMixin, XBlock):
         self, request_body, suffix=""
     ):  # pylint: disable=unused-argument
         """Return a guest token for Superset."""
+        if not STOCK_GUEST_TOKENS:
+            raise JsonHandlerError(
+                403, _("Superset dashboards are not available on this platform.")
+            )
+
         user_service = self.runtime.service(self, "user")
         user = user_service.get_current_user()
 

@@ -74,16 +74,27 @@ def _get_course(course_key):
     return Course(course_id=course_key, display_name=display_name)
 
 
+class RefuseAll(permissions.BasePermission):
+    """
+    Refuse every request, before the view runs.
+
+    Harrow (HARROW_6-5356, ADR-0015): no stock Superset dashboard is served through the LMS, so the
+    course guest-token endpoint answers 403 to everyone, superusers and course staff included.
+    """
+
+    message = _("Superset dashboards are not available on this platform.")
+
+    def has_permission(self, request, view):
+        return False
+
+
 class SupersetTokenView(GenericAPIView):
     """
-    Superset guest token endpoint.
+    Superset guest token endpoint. Refused to everyone in Harrow; see RefuseAll.
     """
 
     authentication_classes = (SessionAuthentication,)
-    permission_classes = (
-        permissions.IsAuthenticated,
-        permissions.IsAdminUser | IsCourseStaffInstructor,
-    )
+    permission_classes = (RefuseAll,)
 
     lookup_field = "course_id"
 

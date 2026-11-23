@@ -7,15 +7,14 @@ from unittest.mock import Mock, patch
 import ddt
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ImproperlyConfigured, ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist
 from django.test import TestCase
-from opaque_keys.edx.keys import CourseKey
 from rest_framework import permissions
 from rest_framework.test import APIClient
 
 from ..views import (
-    DEFAULT_FILTERS_FORMAT,
     IsCourseStaffInstructor,
+    RefuseAll,
     SupersetInContextDashboardView,
     SupersetTokenView,
 )
@@ -50,95 +49,24 @@ class ViewsTestCase(TestCase):
         self.user.set_password("password")
         self.user.save()
 
-    def test_guest_token_requires_authorization(self):
-        response = self.client.get(self.superset_guest_token_url)
-        self.assertEqual(response.status_code, 403)
-
-    def test_guest_token_requires_course_access(self):
-        self.client.login(username="user", password="password")
-        response = self.client.get(self.superset_guest_token_url)
-        self.assertEqual(response.status_code, 403)
-
-    def test_guest_token_invalid_course_id(self):
-        superset_guest_token_url = "/superset_guest_token/block-v1:org+course+run"
-        self.client.login(username="user", password="password")
-        response = self.client.get(superset_guest_token_url)
-        self.assertEqual(response.status_code, 404)
-
     @patch("platform_plugin_aspects.views.get_model")
-    def test_guest_token_course_not_found(self, mock_get_model):
-        mock_model_get = Mock(side_effect=ObjectDoesNotExist)
-        mock_model_only = Mock(return_value=Mock(get=mock_model_get))
-        mock_get_model.return_value = Mock(
-            objects=Mock(only=mock_model_only),
-            DoesNotExist=ObjectDoesNotExist,
-        )
-
-        self.client.login(username="user", password="password")
-        response = self.client.get(self.superset_guest_token_url)
-        self.assertEqual(response.status_code, 404)
-        mock_model_get.assert_called_once()
-
-    @patch.object(IsCourseStaffInstructor, "has_object_permission")
     @patch("platform_plugin_aspects.views.generate_guest_token")
-    def test_guest_token(self, mock_generate_guest_token, mock_has_object_permission):
-        mock_has_object_permission.return_value = True
-        mock_generate_guest_token.return_value = "test-token"
-
-        self.client.login(username="user", password="password")
-        response = self.client.get(self.superset_guest_token_url)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json().get("guestToken"), "test-token")
-        mock_has_object_permission.assert_called_once()
-        mock_generate_guest_token.assert_called_once()
-
-    @patch.object(IsCourseStaffInstructor, "has_object_permission")
-    @patch("platform_plugin_aspects.views.generate_guest_token")
-    def test_no_guest_token(
-        self, mock_generate_guest_token, mock_has_object_permission
+    def test_guest_token_refused_before_anything_runs(
+        self, mock_generate_guest_token, mock_get_model
     ):
-        mock_has_object_permission.return_value = True
-        mock_generate_guest_token.side_effect = ImproperlyConfigured
-
+        """
+        Harrow: the course token endpoint refuses before it looks up the course or asks Superset.
+        """
         self.client.login(username="user", password="password")
-        response = self.client.get(self.superset_guest_token_url)
-
-        self.assertEqual(response.status_code, 500)
-        mock_has_object_permission.assert_called_once()
-        mock_generate_guest_token.assert_called_once()
-
-    @patch("platform_plugin_aspects.views.get_model")
-    @patch.object(IsCourseStaffInstructor, "has_object_permission")
-    @patch("platform_plugin_aspects.views.generate_guest_token")
-    def test_guest_token_with_course_overview(
-        self, mock_generate_guest_token, mock_has_object_permission, mock_get_model
-    ):
-        mock_has_object_permission.return_value = True
-        mock_generate_guest_token.return_value = "test-token"
-        mock_model_get = Mock(return_value=Mock(display_name="Course Title"))
-        mock_model_only = Mock(return_value=Mock(get=mock_model_get))
-        mock_get_model.return_value = Mock(
-            objects=Mock(only=mock_model_only),
-            DoesNotExist=ObjectDoesNotExist,
-        )
-
-        self.client.login(username="user", password="password")
-        response = self.client.get(self.superset_guest_token_url)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json().get("guestToken"), "test-token")
-        mock_has_object_permission.assert_called_once()
-        mock_model_get.assert_called_once()
-        mock_generate_guest_token.assert_called_once_with(
-            user=self.user,
-            course=CourseKey.from_string(COURSE_ID),
-            dashboards=(
-                settings.ASPECTS_INSTRUCTOR_DASHBOARDS
-                + list(settings.ASPECTS_IN_CONTEXT_DASHBOARDS.values())
-            ),
-            filters=DEFAULT_FILTERS_FORMAT,
-        )
+        for url in (
+            self.superset_guest_token_url,
+            "/superset_guest_token/block-v1:org+course+run",
+        ):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 403)
+        mock_get_model.assert_not_called()
+        mock_generate_guest_token.assert_not_called()
 
     def test_in_context_dashboard_requires_authorization(self):
         response = self.client.get(self.superset_in_context_dashboard_course_url)
@@ -241,8 +169,8 @@ class ViewsTestCase(TestCase):
         self.assertEqual(data["defaultCourseRun"], "run")
 
 
+TOKEN_URL = f"/superset_guest_token/{COURSE_ID}"
 PERMISSION_TEST_URLS = (
-    f"/superset_guest_token/{COURSE_ID}",
     f"/superset_in_context_dashboard/{COURSE_ID}",
     (
         "/superset_in_context_dashboard/"
@@ -399,9 +327,39 @@ class ViewPermissionsTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
 
     @ddt.data(
-        SupersetTokenView,
-        SupersetInContextDashboardView,
+        {"is_staff": True, "is_superuser": True},
+        {"is_staff": True},
+        {"is_superuser": True},
     )
+    def test_token_refused_to_platform_staff(self, user_kwargs):
+        """
+        Harrow: superusers and global staff get no course guest token.
+        """
+        self._login(**user_kwargs)
+
+        self._assert_denied(self.client.get(TOKEN_URL))
+
+    @ddt.data(True, False)
+    def test_token_refused_with_or_without_a_course_role(self, has_role):
+        """
+        Harrow: course staff and instructors get no course guest token, nor do learners.
+        """
+        self._login()
+        self._set_course_role(has_role)
+
+        self._assert_denied(self.client.get(TOKEN_URL))
+        self._assert_denied(self.client.head(TOKEN_URL))
+
+    def test_token_refused_signed_out(self):
+        self._assert_denied(self.client.get(TOKEN_URL))
+
+    def test_token_view_refuses_everyone(self):
+        """
+        Guard against bringing back a permission that lets anyone through.
+        """
+        self.assertEqual(SupersetTokenView.permission_classes, (RefuseAll,))
+
+    @ddt.data(SupersetInContextDashboardView)
     def test_permission_classes(self, view_class):
         """
         Guard against reintroducing a permission that allows any safe method.

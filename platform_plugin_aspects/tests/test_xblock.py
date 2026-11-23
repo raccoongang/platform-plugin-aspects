@@ -3,11 +3,9 @@
 Test basic SupersetXBlock display function
 """
 
-import json
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from django.core.exceptions import ImproperlyConfigured
 from opaque_keys.edx.locator import CourseLocator
 from webob import Request
 from xblock.field_data import DictFieldData
@@ -123,47 +121,10 @@ class TestRender(TestCase):
             assert resource.kind != "url"
         mock_get_language.assert_called_once()
 
-    @patch("platform_plugin_aspects.utils.SupersetClient")
-    def test_guest_token_handler(self, mock_superset_client):
-        response_mock = Mock(status_code=200)
-        mock_superset_client.return_value.session.post.return_value = response_mock
-        response_mock.json.return_value = {
-            "token": "test-token",
-        }
-
-        request = Request.blank("/")
-        request.method = "POST"
-        request.body = b"{}"
-        xblock = make_an_xblock("instructor")
-        xblock.dashboard_uuid = "1d6bf904-f53f-47fd-b1c9-6cd7e284d286"
-        response = xblock.get_superset_guest_token(request)
-
-        assert response.status_code == 200
-        data = json.loads(response.body.decode("utf-8"))
-        assert data.get("guestToken") == "test-token"
-        mock_superset_client.assert_called_once()
-
-    @patch("platform_plugin_aspects.views.generate_guest_token")
-    def test_guest_token_handler_failed(self, mock_generate_guest_token):
-        mock_generate_guest_token.side_effect = ImproperlyConfigured
-
-        request = Request.blank("/")
-        request.method = "POST"
-        request.body = b"{}"
-        xblock = make_an_xblock("instructor")
-        response = xblock.get_superset_guest_token(request)
-
-        assert response.status_code == 500
-        data = json.loads(response.body.decode("utf-8"))
-        assert (
-            "Error trying to fetch Superset guest token, mostly likely due to invalid"
-            in data.get("error")
-        )
-
 
 class TestGuestTokenPermissions(TestCase):
     """
-    Test that only course staff can get a guest token from the XBlock handler.
+    Harrow: the XBlock handler gives nobody a guest token, course staff included.
     """
 
     def setUp(self):
@@ -196,14 +157,11 @@ class TestGuestTokenPermissions(TestCase):
         assert response.status_code == 403
         self.mock_generate_guest_token.assert_not_called()
 
-    def test_course_staff_allowed(self):
+    def test_course_staff_denied(self):
+        # global staff are reported as "instructor" too
         for role in ("staff", "instructor"):
             with self.subTest(role=role):
-                response = self._call_handler(make_an_xblock(role))
-
-                assert response.status_code == 200
-                data = json.loads(response.body.decode("utf-8"))
-                assert data.get("guestToken") == "test-token"
+                self._assert_denied(make_an_xblock(role))
 
     def test_student_denied(self):
         self._assert_denied(make_an_xblock("student"))

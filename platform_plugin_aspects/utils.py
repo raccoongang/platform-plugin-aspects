@@ -31,6 +31,10 @@ def _(text):
     return text
 
 
+# Harrow (HARROW_6-5356, ADR-0015): no stock Superset dashboard is served through the LMS. The course
+# guest-token view and the Superset XBlock refuse everyone with this message.
+STOCK_DASHBOARDS_REFUSED = _("Superset dashboards are not available on this platform.")
+
 DEFAULT_FILTERS_FORMAT = [
     "org = '{course_id.org}'",
     "course_key = '{course_id}'",

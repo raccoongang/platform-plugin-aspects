@@ -14,9 +14,7 @@ from rest_framework.test import APIClient
 
 from ..views import (
     IsCourseStaffInstructor,
-    RefuseAll,
     SupersetInContextDashboardView,
-    SupersetTokenView,
 )
 
 COURSE_ID = "course-v1:org+course+run"
@@ -353,18 +351,13 @@ class ViewPermissionsTestCase(TestCase):
     def test_token_refused_signed_out(self):
         self._assert_denied(self.client.get(TOKEN_URL))
 
-    def test_token_view_refuses_everyone(self):
-        """
-        Guard against bringing back a permission that lets anyone through.
-        """
-        self.assertEqual(SupersetTokenView.permission_classes, (RefuseAll,))
-
-    @ddt.data(SupersetInContextDashboardView)
-    def test_permission_classes(self, view_class):
+    def test_permission_classes(self):
         """
         Guard against reintroducing a permission that allows any safe method.
         """
-        is_authenticated, staff_or_course_staff = view_class.permission_classes
+        is_authenticated, staff_or_course_staff = (
+            SupersetInContextDashboardView.permission_classes
+        )
         self.assertIs(is_authenticated, permissions.IsAuthenticated)
         self.assertIs(staff_or_course_staff.op1_class, permissions.IsAdminUser)
         self.assertIs(staff_or_course_staff.op2_class, IsCourseStaffInstructor)

@@ -17,6 +17,7 @@ from rest_framework.response import Response
 
 from .utils import (
     DEFAULT_FILTERS_FORMAT,
+    STOCK_DASHBOARDS_REFUSED,
     _,
     build_filter,
     generate_guest_token,
@@ -76,13 +77,10 @@ def _get_course(course_key):
 
 class RefuseAll(permissions.BasePermission):
     """
-    Refuse every request, before the view runs.
-
-    Harrow (HARROW_6-5356, ADR-0015): no stock Superset dashboard is served through the LMS, so the
-    course guest-token endpoint answers 403 to everyone, superusers and course staff included.
+    Refuse every request, before the view runs (Harrow, see STOCK_DASHBOARDS_REFUSED).
     """
 
-    message = _("Superset dashboards are not available on this platform.")
+    message = STOCK_DASHBOARDS_REFUSED
 
     def has_permission(self, request, view):
         return False
@@ -90,7 +88,8 @@ class RefuseAll(permissions.BasePermission):
 
 class SupersetTokenView(GenericAPIView):
     """
-    Superset guest token endpoint. Refused to everyone in Harrow; see RefuseAll.
+    Superset guest token endpoint. Refused to everyone in Harrow (RefuseAll); the upstream body is kept so
+    the fork rebases cleanly.
     """
 
     authentication_classes = (SessionAuthentication,)

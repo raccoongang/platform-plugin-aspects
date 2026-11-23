@@ -26,6 +26,7 @@ except ImportError:  # pragma: no cover
 
 from .utils import (
     DEFAULT_FILTERS_FORMAT,
+    STOCK_DASHBOARDS_REFUSED,
     _,
     generate_guest_token,
     generate_superset_context,
@@ -37,10 +38,6 @@ loader = ResourceLoader(__name__)
 # Course roles, as reported by edx-platform, that may access Superset dashboards.
 # Global staff are reported as "instructor".
 COURSE_STAFF_ROLES = ("staff", "instructor")
-
-# Harrow (HARROW_6-5356, ADR-0015): no stock Superset dashboard is served through the LMS, so the block
-# gives nobody a guest token. Harrow's own dashboards are embedded by analytics-reports.
-STOCK_GUEST_TOKENS = False
 
 
 @XBlock.needs("user")
@@ -222,12 +219,10 @@ class SupersetXBlock(StudioEditableXBlockMixin, XBlock):
         self, request_body, suffix=""
     ):  # pylint: disable=unused-argument
         """Return a guest token for Superset."""
-        if not STOCK_GUEST_TOKENS:
-            raise JsonHandlerError(
-                403, _("Superset dashboards are not available on this platform.")
-            )
+        # Harrow: refuse everyone; the upstream body is kept, unreachable, so the fork rebases cleanly.
+        raise JsonHandlerError(403, STOCK_DASHBOARDS_REFUSED)
 
-        user_service = self.runtime.service(self, "user")
+        user_service = self.runtime.service(self, "user")  # pylint: disable=unreachable
         user = user_service.get_current_user()
 
         if not self.user_is_course_staff(user):

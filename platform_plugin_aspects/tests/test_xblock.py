@@ -132,10 +132,7 @@ class TestGuestTokenPermissions(TestCase):
         Mock guest token generation; it must never run for denied users.
         """
         super().setUp()
-        patcher = patch(
-            "platform_plugin_aspects.xblock.generate_guest_token",
-            return_value="test-token",
-        )
+        patcher = patch("platform_plugin_aspects.xblock.generate_guest_token")
         self.addCleanup(patcher.stop)
         self.mock_generate_guest_token = patcher.start()
 
@@ -157,14 +154,11 @@ class TestGuestTokenPermissions(TestCase):
         assert response.status_code == 403
         self.mock_generate_guest_token.assert_not_called()
 
-    def test_course_staff_denied(self):
+    def test_every_role_denied(self):
         # global staff are reported as "instructor" too
-        for role in ("staff", "instructor"):
+        for role in ("staff", "instructor", "student", "beta_tester"):
             with self.subTest(role=role):
                 self._assert_denied(make_an_xblock(role))
-
-    def test_student_denied(self):
-        self._assert_denied(make_an_xblock("student"))
 
     def test_no_role_denied(self):
         # e.g. an anonymous user, whose opt_attrs has no role
@@ -172,9 +166,6 @@ class TestGuestTokenPermissions(TestCase):
         user = xblock.runtime.service(xblock, "user").get_current_user()
         user.opt_attrs = {}
         self._assert_denied(xblock)
-
-    def test_unknown_role_denied(self):
-        self._assert_denied(make_an_xblock("beta_tester"))
 
     def test_no_user_denied(self):
         xblock = make_an_xblock("instructor")

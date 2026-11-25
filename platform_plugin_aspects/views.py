@@ -17,6 +17,7 @@ from rest_framework.response import Response
 
 from .utils import (
     DEFAULT_FILTERS_FORMAT,
+    STOCK_DASHBOARDS_REFUSED,
     _,
     build_filter,
     generate_guest_token,
@@ -74,16 +75,25 @@ def _get_course(course_key):
     return Course(course_id=course_key, display_name=display_name)
 
 
+class RefuseAll(permissions.BasePermission):
+    """
+    Refuse every request, before the view runs (Harrow, see STOCK_DASHBOARDS_REFUSED).
+    """
+
+    message = STOCK_DASHBOARDS_REFUSED
+
+    def has_permission(self, request, view):
+        return False
+
+
 class SupersetTokenView(GenericAPIView):
     """
-    Superset guest token endpoint.
+    Superset guest token endpoint. Refused to everyone in Harrow (RefuseAll); the upstream body is kept so
+    the fork rebases cleanly.
     """
 
     authentication_classes = (SessionAuthentication,)
-    permission_classes = (
-        permissions.IsAuthenticated,
-        permissions.IsAdminUser | IsCourseStaffInstructor,
-    )
+    permission_classes = (RefuseAll,)
 
     lookup_field = "course_id"
 
